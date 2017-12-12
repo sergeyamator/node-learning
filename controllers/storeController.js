@@ -27,6 +27,7 @@ exports.addStore = (req, res) => {
 };
 
 exports.createStore = async (req, res) => {
+  req.body.author = req.user._id;
   const store = new Store(req.body);
   await store.save();
   req.flash('success', `Successfully Created ${store.name}`);
@@ -38,8 +39,15 @@ exports.getStores = async (req, res) => {
   res.render('stores', {title: 'stores', stores});
 };
 
+const confirmOwner = (store, user) => {
+  if (!store.author.equals(user._id)) {
+    throw Error('You must own a store in order to edit it')
+  }
+};
+
 exports.editStore = async (req, res) => {
   const store = await Store.findOne({_id: req.params.id});
+  confirmOwner(store, req.user);
   res.render('editStore', {title: 'Edit store', store});
 };
 
@@ -71,7 +79,7 @@ exports.resize = async (req, res, next) => {
 }
 
 exports.getStoreBySlug = async (req, res, next) => {
-  const store = await Store.findOne({slug: req.params.slug});
+  const store = await Store.findOne({slug: req.params.slug}).populate('author');
   if (!store) return next();
 
   res.render('store', {store, tiel: store.name});
@@ -86,4 +94,20 @@ exports.getStoresByTag = async (req, res, next) => {
 
 
   res.render('tag', {tags, title: 'Tags', tag, stores}); 
+}
+
+exports.searchStores = async (req, res) => {
+  const stores = await Store.find({
+    $text: {
+      $search: req.query.q,
+    }
+  }, {
+    score: {$meta: 'textScore'}
+  })
+  .sort({
+    score: {$meta: 'textScore'} 
+  })
+  .limit(5);
+  
+  res.json(stores)
 }
