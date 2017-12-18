@@ -36,8 +36,25 @@ exports.createStore = async (req, res) => {
 };
 
 exports.getStores = async (req, res) => {
-  const stores = await Store.find();
-  res.render('stores', {title: 'stores', stores});
+  const page = req.params.page || 1;
+  const limit = 4;
+  const skip = (page * limit) - limit;
+  const storesPromise = Store
+    .find()
+    .skip(skip)
+    .limit(limit);
+
+  const countPromise = Store.count();
+  const [stores, count] = await Promise.all([storesPromise, countPromise]);
+  const pages = Math.ceil(count / limit);
+
+  if (!stores.length && skip) {
+    req.flash('info', `You asked for page ${page}`);
+    res.redirect(`/stores/page/${pages}`);
+    return;
+  }
+
+  res.render('stores', {title: 'stores', stores, pages, page, count});
 };
 
 const confirmOwner = (store, user) => {
@@ -80,7 +97,7 @@ exports.resize = async (req, res, next) => {
 }
 
 exports.getStoreBySlug = async (req, res, next) => {
-  const store = await Store.findOne({slug: req.params.slug}).populate('author');
+  const store = await Store.findOne({slug: req.params.slug}).populate('author reviews');
   if (!store) return next();
 
   res.render('store', {store, tiel: store.name});
@@ -140,4 +157,17 @@ exports.heartStore = async (req, res) => {
   const operator = hearts.includes(req.params.id) ? '$pull' : '$addToSet';
   const user = await User.findByIdAndUpdate(req.user._id, { [operator]: { hearts: req.params.id}}, {new: true});
   res.json(user)
+}
+
+exports.getHearts = async (req, res) => {
+  const stores = await Store.find({
+    _id: { $in: req.user.hearts }
+  });
+
+  res.render('stores', {title: 'Hearted stores', stores })
+}
+
+exports.getTopStores = async (req, res) => {
+  const stores = await Store.getTopStores();
+  res.render('topStores', {stores, title: 'Top Stores'});
 }
